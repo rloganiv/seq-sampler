@@ -13,4 +13,5 @@ Dependencies
 Files
 -----
 `sampler.py` - Defines all of the sampling objects.
+
 `example.py` - Provides examples for how to setup and use the samplers.
