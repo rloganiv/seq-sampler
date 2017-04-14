@@ -28,30 +28,34 @@ class MCSampler(SequenceSampler):
 
     Note: n-th state always considered to be an end state.
     """
-    def __init__(self, alpha, gamma):
+    def __init__(self, alpha, gamma, beta=1):
         """Initialize model with predefined parameters
 
         args:
             alpha: np.array. Transition probabilities.
             gamma: np.array. Initial value probabilities.
+            beta: float. Decay constant.
         """
         assert alpha.ndim == 2, "ERROR: alpha not a matrix"
-        assert alpha.shape[0] == alpha.shape[1], "ERROR: alpha not square"
+        assert alpha.shape[0] == alpha.shape[1]-1, "ERROR: alpha not square"
         assert alpha.shape[0] == gamma.shape[0], "ERROR: incompatible alpha and gamma"
+        assert 0 <= beta, "ERROR: beta must be non-negative"
 
         self.alpha = alpha
         self.gamma = gamma
-        self.end_token = alpha.shape[0] - 1
+        self.beta = beta
+        self.end_token = alpha.shape[0]
         self.prev = None
 
     @classmethod
-    def random_init(cls, n, zero_diag=True):
+    def random_init(cls, n, zero_diag=True, beta=1):
         """Randomly initialize model parameters
 
         args:
             n: int. Number of states.
             zero_diag: bool. True if diagonal elements of transition matrix are
                 forced to be zero (e.g. states do not repeat)
+            beta: float. Decay constant.
         """
         gamma = np.random.rand(n)
         gamma[n-1] = 0
@@ -60,7 +64,8 @@ class MCSampler(SequenceSampler):
         alpha = np.random.rand(n, n)
         if zero_diag:
             np.fill_diagonal(alpha, 0)
-        alpha = alpha / np.sum(alpha, axis=1).reshape((n, 1))
+        z = np.sum(alpha, axis=1).reshape((n, 1))
+        alpha = alpha / z
 
         return cls(alpha, gamma)
 
@@ -68,14 +73,32 @@ class MCSampler(SequenceSampler):
         while True:
             if self.prev is None:
                 prob = self.gamma
+                # Need to copy alpha since it mutates with decay
+                alpha = np.copy(self.alpha)
             else:
-                prob = self.alpha[self.prev]
+                prob = alpha[self.prev]
             cdf = np.cumsum(prob)
             rng = random.random()
             sample = np.argmax(cdf > rng)
-            self.prev = sample
+            if sample != self.end_token:
+                self.prev = sample
+                alpha = self.decay(alpha, sample)
             yield sample
 
+    def decay(self, alpha, sample):
+        alpha[:, sample] = self.beta * alpha[:, sample]
+        z = np.sum(alpha, axis=1).reshape((alpha.shape[0], 1))
+        # BEGIN STUPID HACK
+        bad_inds = z == 0.
+        if np.sum(bad_inds) > 0:
+            bad_inds = bad_inds.reshape((alpha.shape[0]))
+            repl = np.zeros((1, alpha.shape[1]))
+            repl[0, self.end_token] = 1
+            alpha[bad_inds] = repl
+            z[bad_inds] = 1
+        # END STUPID HACK
+        return alpha / z
+
     def reset(self):
-        self.state = None
+        self.prev = None
 

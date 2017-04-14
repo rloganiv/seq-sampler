@@ -1,28 +1,22 @@
 import numpy as np
-from sampler import MCSampler
+import pandas as pd
+import process
+import sampler
 
-# There are two options for initialization:
+# Parameters
+k = 0.0
+beta = 0.0
 
-# 1. Use a predefined transition matrix
+# Load sequence data
+df = pd.read_csv('./data/traj-noloop-all-Melb.csv')
+seqs, vocab = process.extract_seqs(df, value_id='poiID', sort_id='startTime',
+                                   group_id='userID')
+alpha, gamma = process.transition_matrix(seqs, vocab, k)
 
-alpha = np.array([
-    [0.00, 0.25, 0.25, 0.25],
-    [0.25, 0.00, 0.25, 0.25],
-    [0.25, 0.25, 0.00, 0.25],
-    [0.25, 0.25, 0.25, 0.00]
-])
+# Initialize sampler
+sampler = sampler.MCSampler(alpha, gamma, beta)
 
-gamma = np.array([0.33, 0.33, 0.34, 0.00])
-
-mc_sampler = MCSampler(alpha, gamma)
-
-# 2. Randomly initialize the sampler
-
-n_classes = 4
-
-mc_sampler = MCSampler.random_init(n_classes)
-
-# To generate a sequence run:
-
-sequence = mc_sampler.gen_sequence()
-print(sequence)
+# Draw test samples
+print 'Generating test sequences'
+for _ in xrange(10):
+    print sampler.gen_sequence()
